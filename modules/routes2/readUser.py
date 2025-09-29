@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
-from modules.items.schema2.schemas2 import User
-from modules.items.routes2.createUser import users_db
+from modules.schema2.schemas2 import User
+from modules.routes2.createUser import users_db
 
 router = APIRouter()
 

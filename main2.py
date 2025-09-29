@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from modules.items.routes import createUser, readUser, updateUser, deleteUser
+from modules.routes2 import createUser, readUser, updateUser, deleteUser
 
 app = FastAPI(title="Kapsel Andat - Users CRUD API")
 

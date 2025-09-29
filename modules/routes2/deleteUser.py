@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
-from modules.items.routes2.createUser import users_db
+from modules.routes2.createUser import users_db
 
 router = APIRouter()
 
