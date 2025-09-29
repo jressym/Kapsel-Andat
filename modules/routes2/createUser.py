@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, status
-from modules.items.schema.schemas2 import UserCreate, User
+from modules.items.schema2.schemas2 import UserCreate, User
 from datetime import datetime
 
 router = APIRouter()
-users_db = []  # simpan sementara dalam list
+users_db = [] 
 id_counter = 1
 
 
@@ -11,7 +11,6 @@ id_counter = 1
 def create_user(user: UserCreate):
     global id_counter
 
-    # cek duplicate username/email
     for u in users_db:
         if u["username"] == user.username:
             raise HTTPException(status_code=400, detail="Username sudah terpakai")

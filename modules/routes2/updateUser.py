@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
-from modules.items.schema.schemas2 import UserUpdate, User
+from modules.items.schema2.schemas2 import UserUpdate, User
 from datetime import datetime
-from modules.items.routes.createUser import users_db
+from modules.items.routes2.createUser import users_db
 
 router = APIRouter()
 
