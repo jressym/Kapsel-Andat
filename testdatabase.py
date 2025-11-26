@@ -1,18 +1,11 @@
-# FINAL SEED SYSTEM BIOSKOP (Updated with weekday for Jadwal & Orders)
-# - Row kursi: A1, A2, B3, ...
-# - 6 Movies fixed
-# - 3 tayang/hari (1-31 Desember 2024)
-# - Promo_name + discount
-# - Anti double booking
-# - Orders default 1200
-# - transaction_date + weekday on jadwal & orders
-
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Date, Time, DateTime, ForeignKey, UniqueConstraint
+    create_engine, Column, Integer, String, Date, Time,
+    UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 from faker import Faker
-import random, datetime, uuid, sys, time
+import random, datetime
+
 
 DB_URL = "mysql+pymysql://root:%40Keju1234@localhost:3306/bioskop"
 
@@ -21,233 +14,280 @@ fake = Faker("id_ID")
 
 NUM_STUDIOS = 5
 NUM_MEMBERS = 100
-ORDERS_TO_GENERATE = 1200
+ORDERS_TO_GENERATE = 1000
+
 MIN_ROWS = 8
 MIN_COLS = 6
 
-WEEKDAYS = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+def gen(prefix,i,width):
+    return f"{prefix}{str(i).zfill(width)}"
 
-def get_weekday(date_obj):
-    return WEEKDAYS[date_obj.weekday()]
 
 class Movie(Base):
-    __tablename__ = "movies"
-    id = Column(Integer, primary_key=True)
-    title = Column(String(255))
+    __tablename__="movies"
+    id = Column(Integer,primary_key=True)
+    code = Column(String(20),unique=True)
+    title = Column(String(200))
     genre = Column(String(100))
     durasi = Column(Integer)
+    director = Column(String(200))
+    rating = Column(String(10))
     price = Column(Integer)
 
+
 class Studio(Base):
-    __tablename__ = "studios"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(60))
+    __tablename__="studios"
+    id = Column(Integer,primary_key=True)
+    code = Column(String(20),unique=True)
+    name = Column(String(100))
     rows = Column(Integer)
     cols = Column(Integer)
 
+
 class StudioSeat(Base):
-    __tablename__ = "studio_seats"
-    id = Column(Integer, primary_key=True)
-    studio_id = Column(Integer, ForeignKey("studios.id"))
-    row = Column(String(5))
+    __tablename__="studio_seats"
+    id = Column(Integer,primary_key=True)
+    studio_id = Column(Integer)
+    row = Column(String(3))
     col = Column(Integer)
-    __table_args__ = (UniqueConstraint("studio_id", "row", "col", name="uq_studio_row_col"),)
+    __table_args__ = (UniqueConstraint("studio_id","row","col"),)
+
 
 class Membership(Base):
-    __tablename__ = "memberships"
+    __tablename__="memberships"
     id = Column(Integer, primary_key=True)
+    code = Column(String(20),unique=True)
     nama = Column(String(255))
 
+
 class Jadwal(Base):
-    __tablename__ = "jadwal"
-    id = Column(Integer, primary_key=True)
-    movie_id = Column(Integer)
-    studio_id = Column(Integer)
-    tanggal = Column(Date)
-    jam = Column(Time)
-    weekday = Column(String(20))
+    __tablename__="jadwal"
+    id=Column(Integer,primary_key=True)
+    code=Column(String(20),unique=True)
+    movie_id=Column(Integer)
+    movie_code=Column(String(20))
+    studio_id=Column(Integer)
+    studio_code=Column(String(20))
+    tanggal=Column(Date)
+    jam=Column(Time)
+
 
 class Order(Base):
-    __tablename__ = "orders"
-    id = Column(Integer, primary_key=True)
-    order_code = Column(String(20))
-    membership_id = Column(Integer)
-    jadwal_id = Column(Integer)
-    payment_method = Column(String(40))
-    seat_count = Column(Integer)
-    discount = Column(Integer)
-    promo_name = Column(String(255))
-    total_price = Column(Integer)
-    final_price = Column(Integer)
-    created_at = Column(DateTime)
-    transaction_date = Column(Date)
-    weekday = Column(String(20))
+    __tablename__="orders"
+    id=Column(Integer,primary_key=True)
+    code=Column(String(20),unique=True)
+    membership_id=Column(Integer)
+    membership_code=Column(String(20))
+    jadwal_id=Column(Integer)
+    payment_method=Column(String(50))
+    seat_count=Column(Integer)
+    promo_name=Column(String(100))
+    discount=Column(Integer)
+    total_price=Column(Integer)
+    final_price=Column(Integer)
+    cash = Column(Integer)
+    change = Column(Integer)
+    transaction_date=Column(Date)
+    hari = Column(String(10))
+
 
 class OrderSeat(Base):
-    __tablename__ = "order_seats"
-    id = Column(Integer, primary_key=True)
-    order_id = Column(Integer)
-    jadwal_id = Column(Integer)
-    studio_id = Column(Integer)
-    row = Column(String(5))
-    col = Column(Integer)
-    __table_args__ = (UniqueConstraint("jadwal_id", "studio_id", "row", "col", name="uq_jadwal_studio_row_col"),)
+    __tablename__="order_seats"
+    id=Column(Integer,primary_key=True)
+    order_id=Column(Integer)
+    jadwal_id=Column(Integer)
+    studio_id=Column(Integer)
+    row=Column(String(3))
+    col=Column(Integer)
+    __table_args__=(UniqueConstraint("jadwal_id","row","col"),)
 
 
-def seat_available(session, jid, studio, r, c):
-    q = session.query(OrderSeat).filter_by(
-        jadwal_id=jid, studio_id=studio, row=r, col=c
-    ).first()
-    return q is None
 
-def ticket_price(dur):
-    if dur >= 180: return 50000
-    if dur >= 150: return 45000
+def price(dur):
+    if dur>=180: return 50000
+    if dur>=125: return 45000
     return 40000
 
-def random_december_date():
-    day = random.randint(1, 31)
-    return datetime.date(2024, 12, day)
 
-engine = create_engine(DB_URL, pool_pre_ping=True)
-Session = sessionmaker(bind=engine)
+def seat_free(s, j, st, r,c):
+    x=s.query(OrderSeat).filter_by(jadwal_id=j,studio_id=st,row=r,col=c).first()
+    return x is None
+
+
+engine=create_engine(DB_URL)
+Session=sessionmaker(bind=engine)
+
+
 
 def main():
-    print("== START SEEDING ==")
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    db = Session()
-
-    films = [
-        ("Avengers Endgame", "Action", 181),
-        ("Interstellar", "SciFi", 169),
-        ("Inception", "SciFi", 148),
-        ("Toy Story 4", "Anim", 100),
-        ("Spiderman NWH", "Action", 148),
-        ("Minions 2", "Anim", 87)
+    db=Session()
+    
+    FILMS = [
+        ("Avengers: Endgame","Action, Fantasy",200,"Anthony Russo, Joe Russo","PG-13"),
+        ("The Conjuring","Horror, Mystery",120,"James Wan","17+"),
+        ("Frozen","Family, Musical",130," Jennifer Lee, Chris Buck","PG"),
+        ("Komang","Drama, Romance",130,"Naya Anindita","13+"),
+        ("Detective Conan: One-eyed Flashback","Anime, Mystery",125,"Katsuya Shigehara","13+")
     ]
 
-    movie_objs = [Movie(title=t, genre=g, durasi=d, price=ticket_price(d)) for t, g, d in films]
-    db.add_all(movie_objs)
+    movies=[]
+    for i,(t,g,d,dirc,rate) in enumerate(FILMS,1):
+        m=Movie(
+            code=gen("MOV",i,3),
+            title=t,
+            genre=g,
+            durasi=d,
+            director=dirc,
+            rating=rate,
+            price=price(d)
+        )
+        db.add(m)
+        movies.append(m)
     db.commit()
-    print("Movies seeded: 6")
 
-    studios = []
-    for i in range(1, NUM_STUDIOS + 1):
-        r = random.randint(MIN_ROWS, MIN_ROWS + 7)
-        c = random.randint(MIN_COLS, MIN_COLS + 14)
-        s = Studio(name=f"Studio {i}", rows=r, cols=c)
+
+    studios=[]
+    for i in range(1,NUM_STUDIOS+1):
+        rows=random.randint(MIN_ROWS,MIN_ROWS+5)
+        cols=random.randint(MIN_COLS,MIN_COLS+5)
+        s=Studio(code=gen("ST",i,3),name=f"Studio {i}",rows=rows,cols=cols)
         db.add(s)
         db.flush()
-
-        row_letters = [chr(ord('A') + idx) for idx in range(r)]
-        seats = [StudioSeat(studio_id=s.id, row=rr, col=cc) for rr in row_letters for cc in range(1, c + 1)]
-        db.add_all(seats)
+        rl=[chr(ord("A")+k) for k in range(rows)]
+        for rr in rl:
+            for cc in range(1,cols+1):
+                db.add(StudioSeat(studio_id=s.id,row=rr,col=cc))
         studios.append(s)
     db.commit()
-    print(f"Studios seeded: {len(studios)}")
 
-    members = []
-    for _ in range(NUM_MEMBERS):
-        m = Membership(nama=fake.name())
+
+    members=[]
+    for i in range(1,NUM_MEMBERS+1):
+        m=Membership(code=gen("MEM",i,3),nama=fake.name())
         db.add(m)
         members.append(m)
     db.commit()
-    print(f"Memberships seeded: {len(members)}")
 
-    jadwals = []
-    showtimes = [datetime.time(11, 0), datetime.time(15, 0), datetime.time(19, 0)]
-    for day in range(1, 32):
-        tgl = datetime.date(2024, 12, day)
-        wd = get_weekday(tgl)
-        for mv in movie_objs:
-            for jam in showtimes:
-                st = random.choice(studios)
-                jd = Jadwal(movie_id=mv.id, studio_id=st.id, tanggal=tgl, jam=jam, weekday=wd)
+
+    jadw=[]
+    j=1
+    times=[datetime.time(11,0),datetime.time(16,0),datetime.time(20,30)]
+
+    for d in range(1,32):
+        dt=datetime.date(2024,12,d)
+        for mv in movies:
+            for hm in times:
+                st=random.choice(studios)
+                jd=Jadwal(
+                    code=gen("JAD",j,4),
+                    movie_id=mv.id,
+                    movie_code=mv.code,
+                    studio_id=st.id,
+                    studio_code=st.code,
+                    tanggal=dt,
+                    jam=hm
+                )
                 db.add(jd)
-                jadwals.append(jd)
+                db.flush()
+                jadw.append(jd)
+                j+=1
     db.commit()
-    print(f"Jadwal seeded: {len(jadwals)}")
 
-    promo_list = [
-        ("Tanpa Promo", 0),
-        ("Promo Akhir Tahun", 10),
-        ("Member Gold", 15),
-        ("Promo Bank XYZ", 20),
-        ("Promo Midnight", 5)
-    ]
-    pay_opts = ["Cash", "QRIS", "Debit", "Gopay", "ShopeePay"]
 
-    done = 0
-    attempts = 0
-    max_attempts = ORDERS_TO_GENERATE * 20
+    methods=["QRIS","Debit","Gopay","ShopeePay","CASH"]
 
-    start = time.time()
-    while done < ORDERS_TO_GENERATE and attempts < max_attempts:
-        attempts += 1
+    hari_map = {
+        0:"Senin",
+        1:"Selasa",
+        2:"Rabu",
+        3:"Kamis",
+        4:"Jumat",
+        5:"Sabtu",
+        6:"Minggu"
+    }
 
-        j = random.choice(jadwals)
-        tgl = random_december_date()
-        wd = get_weekday(tgl)
 
-        st = db.query(Studio).filter_by(id=j.studio_id).first()
-        mv = db.query(Movie).filter_by(id=j.movie_id).first()
-        price = mv.price
+    done=0
+    tries=0
 
-        member = random.choice(members)
-        seat_want = random.randint(1, 6)
+    while done<ORDERS_TO_GENERATE and tries<ORDERS_TO_GENERATE*20:
+        tries+=1
+        jd=random.choice(jadw)
+        mv=db.query(Movie).filter_by(id=jd.movie_id).first()
+        st=db.query(Studio).filter_by(id=jd.studio_id).first()
+        mem=random.choice(members)
 
-        promo_name, disc = random.choice(promo_list)
-        row_letters = [chr(ord('A') + idx) for idx in range(st.rows)]
+        want=random.randint(1,6)
 
-        chosen = []
-        tries = 0
-        while len(chosen) < seat_want and tries < 60:
-            tries += 1
-            r = random.choice(row_letters)
-            c = random.randint(1, st.cols)
-            if (r, c) in chosen:
-                continue
-            if seat_available(db, j.id, st.id, r, c):
-                chosen.append((r, c))
+        rl=[chr(ord('A')+k) for k in range(st.rows)]
+        seats=[]
+        att=0
+        while len(seats)<want and att<50:
+            att+=1
+            r=random.choice(rl)
+            c=random.randint(1,st.cols)
+            if (r,c) in seats:continue
+            if seat_free(db,jd.id,st.id,r, c):
+                seats.append((r,c))
 
-        if not chosen:
+        if not seats:
             continue
 
-        tot = len(chosen) * price
-        fin = tot - int(tot * disc / 100)
+        promo="NO PROMO"
+        disc=0
 
-        ordx = Order(
-            order_code=str(uuid.uuid4())[:12],
-            membership_id=member.id,
-            jadwal_id=j.id,
-            payment_method=random.choice(pay_opts),
-            seat_count=len(chosen),
+        if jd.tanggal.day==12:
+            promo="SUPER 12.12"
+            disc=30
+        elif len(seats)>=5:
+            promo="BULK 5+"
+            disc=20
+
+        tot=mv.price*len(seats)
+        fin=tot-int(tot*disc/100)
+
+        pm = random.choice(methods)
+
+        cash_val = None
+        change_val = None
+
+        if pm == "CASH":
+            cash_val = random.choice([fin, fin+5000, fin+10000, fin+20000])
+            change_val = cash_val - fin
+
+
+        o=Order(
+            code=gen("ORD",done+1,6),
+            membership_id=mem.id,
+            membership_code=mem.code,
+            jadwal_id=jd.id,
+            payment_method=pm,
+            seat_count=len(seats),
+            promo_name=promo,
             discount=disc,
-            promo_name=promo_name,
             total_price=tot,
             final_price=fin,
-            created_at=datetime.datetime.now(),
-            transaction_date=tgl,
-            weekday=wd
+            cash=cash_val,
+            change=change_val,
+            transaction_date=jd.tanggal,
+            hari=hari_map[jd.tanggal.weekday()]     
         )
-
-        db.add(ordx)
+        db.add(o)
         db.flush()
 
-        for a, b in chosen:
-            db.add(OrderSeat(order_id=ordx.id, jadwal_id=j.id, studio_id=st.id, row=a, col=b))
+        for (r,c) in seats:
+            db.add(OrderSeat(order_id=o.id,jadwal_id=jd.id,studio_id=st.id,row=r,col=c))
 
         try:
             db.commit()
-            done += 1
+            done+=1
         except:
             db.rollback()
             continue
 
-    print(f"Orders generated: {done}")
+    print("DONE:",done,"orders")
 
-    print("== DONE SEEDING ==")
-
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
